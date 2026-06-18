@@ -139,6 +139,10 @@ def main():
     args = parser.parse_args()
     registry = Registry(Path.home() / ".sec-registry")
 
+    """
+    MASTER_KEy = 
+    """
+
     try:
         if args.comando == "init":
             senha = getpass.getpass("crie a senha mestra: ")
