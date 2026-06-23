@@ -1,48 +1,75 @@
 # Sec-Registry
 
-O Sec-Registry é um cofre para armazenamento de segredos criptografados a partir de uma senha mestra. A ferramenta opera tanto de forma isolada no disco local quanto conectada a uma API remota.
+O Sec-Registry é uma ferramenta de interface de linha de comando (CLI) desenvolvida para a gestão centralizada e segura de credenciais. O sistema elimina a necessidade de manter senhas e tokens expostos em arquivos de configuração estáticos, injetando os segredos diretamente na memória durante a execução das aplicações.
 
-### Arquitetura e Resumo
+## Funcionalidades Principais
 
-O sistema foi arquitetado utilizando inversão de dependência para isolar o motor de criptografia (AES-GCM com PBKDF2) da camada de persistência de dados. Isso permite que a ferramenta transite de forma transparente entre a manipulação de arquivos JSON locais e a comunicação via rede com o servidor central.
+* **Injeção de Dependências em Memória:** Os segredos são repassados aos processos alvo através de variáveis de ambiente gerenciadas por subprocessos. Os dados reais nunca são gravados no disco físico da máquina.
+* **Mapeamento Declarativo:** A substituição de credenciais hardcoded por um arquivo de contrato (`.registry.yml`), que mapeia quais variáveis o projeto exige e de onde elas devem ser extraídas no cofre.
+* **Criptografia Padronizada:** Implementação de algoritmos de mercado (AES-256-GCM com derivação de chave PBKDF2) para garantir a segurança dos dados em repouso.
+* **Operação Híbrida (Local e Remota):** Capacidade de alternar entre um cofre isolado na máquina do desenvolvedor e um servidor centralizado na nuvem, mantendo a mesma base de comandos.
+* **Resiliência de Rede:** O cliente HTTP integrado possui tolerância a falhas. Em caso de instabilidade na conexão com o servidor, o sistema aplica um mecanismo de recuo exponencial (Exponential Backoff) para evitar a interrupção de processos automatizados.
+* **Integração com Chaveiro do Sistema:** Conexão nativa com o gerenciador de credenciais do sistema operacional para armazenamento da senha mestra, garantindo uso diário sem interrupções manuais.
 
-Na operação com a API remota, o cliente de rede implementa resiliência nativa. Chamadas HTTP são envelopadas com limites de timeout explícitos e um mecanismo de retentativas com backoff exponencial. Isso garante que a ferramenta não congele o terminal ou cause falhas prematuras em esteiras de CI/CD durante instabilidades de comunicação.
+## Arquitetura e Segurança
 
-Para gerenciar a senha mestra sem prejudicar a experiência do desenvolvedor, o sistema atua em três camadas de resolução: primeiro busca por variáveis de ambiente (focado em automação), em seguida consulta o chaveiro nativo do sistema operacional (focado no uso local diário) e, como último recurso, aciona o prompt humano. 
+O sistema foi desenhado sob o princípio de isolamento de ambiente e proteção contra falhas operacionais:
 
-A única exceção a este fluxo de resolução é o processo de inicialização do cofre, que é estritamente manual para evitar que scripts automatizados sobrescrevam dados existentes.
+* **Zero Exposição em Disco:** A ferramenta não utiliza arquivos temporários para expor senhas. O ciclo de vida do segredo em texto plano ocorre estritamente dentro da memória (RAM) alocada para o subprocesso durante a execução do comando alvo.
+* **Prevenção de Sobrescrita Acidental:** O fluxo operacional separa ações de leitura das ações de configuração. Comandos de injeção (`run`, `get`) funcionam de forma silenciosa para não quebrar pipelines de CI/CD. Em contrapartida, a inicialização de um cofre (`init`) bloqueia a leitura de variáveis de ambiente e força a confirmação manual, mitigando o risco de automações apagarem o banco de dados.
+* **Modularidade de Armazenamento:** A implementação utiliza Inversão de Dependência para isolar o motor criptográfico da camada de armazenamento de arquivos. Isso permite que a ferramenta transite de forma imperceptível entre a persistência em um arquivo JSON local e a transmissão segura de pacotes via API.
 
-No processo de injeção, a ferramenta lê as instruções do arquivo `.registry.yml`, busca os segredos em tempo real e executa processos arbitrários injetando os valores de forma restrita na memória do sistema operacional, sem expor os dados em disco em nenhum momento.
+## Guia de Uso
 
-### Comandos de Uso
+### 1. Configuração do Projeto
+Na raiz do projeto que consumirá os segredos, cria-se o arquivo de mapeamento `.registry.yml`. O prefixo `secret:` indica que o valor deve ser buscado no cofre.
 
-A interação com a ferramenta ocorre através da interface de linha de comando principal.
+```yaml
+env:
+  PORT: 8080
+  DB_PASS: "secret:DB_PASS"
+  API_TOKEN: "secret:API_TOKEN"
+```
 
-`init`
-Cria um cofre do zero e define a senha mestra. Este comando exige a digitação e confirmação manual, ignorando caches de memória.
+### 2. Comandos do Cofre
 
-`login`
-Inicia a sessão na API remota. A ferramenta envia a credencial de acesso e recebe um token dinâmico gerado pelo servidor, persistindo-o internamente para as chamadas subsequentes.
+**Inicialização:**
+Cria um cofre vazio e estabelece a senha mestra.
 
-`mode [local | remoto]`
-Alterna o comportamento do armazenamento sem invalidar o token de sessão do desenvolvedor.
+```bash
+python -m cli.main init
+```
 
-`set [chave] [valor]`
-Criptografa e guarda um novo segredo no cofre ativo, ou atualiza o valor de uma chave existente.
+**Escrita e Leitura:**
+Guarda um valor criptografado e realiza a leitura do mesmo.
 
-`get [chave]`
-Busca o segredo criptografado, decodifica em memória e imprime o valor resultante.
+```bash
+python -m cli.main set DB_PASS senha_banco_real
+python -m cli.main get DB_PASS
+```
 
-`run [comando_alvo]`
-Lê o arquivo de mapeamento do projeto, substitui as referências aos segredos pelos seus valores reais e inicia o processo alvo repassando o ambiente isolado.
+**Execução Isolada:**
+Lê o contrato YAML, extrai os segredos do cofre e executa a aplicação alvo (ex: um script Python ou um projeto Node) injetando o ambiente seguro.
 
-### Estado de Desenvolvimento
+```bash
+python -m cli.main run python app.py
+```
 
-[x] Criptografia segura com algoritmos AES-256 e PBKDF2
-[x] Abstração de armazenamento para leitura em disco local
-[x] Mapeamento dinâmico de dependências via arquivo YAML
-[x] Isolamento de memória durante injeção de processos nativos
-[x] Comunicação remota via API 
-[x] Tratamento de instabilidades de rede e timeouts de comunicação
-[x] Autenticação com sessão dinâmica
-[x] Integração com cofre nativo do sistema operacional
+### 3. Gestão de Ambientes
+
+O sistema permite alterar a fonte de dados do cofre sem invalidar credenciais de acesso.
+
+**Alternar para o modo remoto:**
+
+```bash
+python -m cli.main mode remoto
+```
+
+**Autenticação na API:**
+Estabelece sessão com o servidor e armazena o token de acesso dinâmico para comunicações futuras.
+
+```bash
+python -m cli.main login
+```
+
+*(Após o login, todos os comandos como `init`, `set`, `get` e `run` passam a operar contra a base de dados do servidor remoto automaticamente).*
