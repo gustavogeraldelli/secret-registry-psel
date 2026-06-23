@@ -1,0 +1,12 @@
+{
+  "__verify__": {
+    "salt": "SIcnEgFH3Jui4DcS8CQC3Q==",
+    "nonce": "StiLMJWM3janW+Wk",
+    "ciphertext": "QIE08ziPkoprBrfhAAVlaep7"
+  },
+  "DB_PASS": {
+    "salt": "TzU4HU4lSFDikGald/+BPw==",
+    "nonce": "ccIudSn4bn54ALdC",
+    "ciphertext": "IKKjwl5FPp4DM26YbT6tU6b99jArrh+QTqIl+qfw1XO8HdAvTg=="
+  }
+}

@@ -1,4 +1,0 @@
-env:
-  PORT: 8080
-  DB_PASS: "secret:api1.db_pass"
-  API_KEY: "secret:api2.api_key"
